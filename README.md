@@ -27,13 +27,13 @@ Los nombres siguen el patrón `<clase><numero>_S.wav`, con números del 1 al 25 
 
 ## Formato y duración
 
-En general, se trabaja con grabaciones WAV mono, PCM de 16 bits y una frecuencia de muestreo de **16 000 Hz**.
+Los audios se grabaron a una frecuencia de muestreo de **16 000 Hz**.
 
 El tamaño conjunto de los WAV es de aproximadamente **14,22 MB**. `inventario.csv` ofrece, para cada archivo, su clase, frecuencia de muestreo, canales, resolución, codificación, número de muestras, duración, tamaño y SHA-256. Las duraciones se calculan a partir del número de tramas y la frecuencia indicada en la cabecera WAV.
 
 ## Adquisición y preparación
 
-Las grabaciones se obtuvieron entre abril y septiembre de 2026. Se registraron exhalaciones forzadas y se provocaron intencionadamente las incidencias de tos, esfuerzo múltiple, esfuerzo insuficiente y terminación precoz. La persona que realizó la prueba estaba sentada, con el tronco erguido; el estetoscopio digital **Thinklabs One** se colocó en el cuello y se procuró mantenerlo estable para reducir artefactos de movimiento. Durante las maniobras se utilizó un espirómetro **CONTEC SP-10**. No se confirmó clínicamente el estado de salud del participante.
+Las grabaciones se obtuvieron entre abril y septiembre de 2026. Se registraron exhalaciones forzadas y se provocaron intencionadamente las incidencias de tos, esfuerzo múltiple, esfuerzo insuficiente y terminación precoz. La persona que realizó la prueba estaba sentada, con el tronco erguido; el estetoscopio digital **Thinklabs One** se colocó en el cuello y se procuró mantenerlo estable para reducir artefactos de movimiento. Durante las maniobras se utilizó un espirómetro **CONTEC SP-10**. No se confirmó clínicamente que el participante estuviera sano, aunque no se conocían patologías previas que indicaran lo contrario.
 
 El programa de adquisición permitía grabar simultáneamente el estetoscopio y el micrófono del ordenador. También se ensayó un móvil en pruebas preliminares. Para este conjunto se conservaron únicamente señales de estetoscopio. Durante la preparación se revisaron la fuente, la clase y el tramo útil de cada registro. Los WAV publicados aquí se copiaron byte por byte del paquete `documentacion.zip` facilitado con el proyecto: el empaquetado de este repositorio no aplica remuestreo, normalización ni reducción de ruido adicional.
 
