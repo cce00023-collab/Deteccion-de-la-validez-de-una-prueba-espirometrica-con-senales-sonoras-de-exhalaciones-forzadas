@@ -8,7 +8,7 @@
 
 El TFG estudia si el sonido de una exhalación forzada permite identificar maniobras espirométricas que requieren revisión. Este repositorio público reúne la memoria, las grabaciones utilizadas y los programas de análisis y adquisición. La base de datos contiene **125 archivos WAV**, organizados en cinco clases de 25. Cada archivo corresponde a una maniobra o segmento de maniobra; **125 archivos no equivalen a 125 participantes**.
 
-**Acceso directo:** [Memoria (PDF)](memoria/memoria.pdf) · [Base de datos](audios_metrica/) · [Inventario de señales](inventario.csv) · [Aplicación Android (APK)](software/android/aplicacion_android.apk) · [Programas de escritorio](software/escritorio/)
+**Acceso directo:** [Memoria (PDF)](memoria/memoria.pdf) · [Descargar memoria](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/memoria/memoria.pdf) · [Base de datos](audios_metrica/) · [Inventario de señales](inventario.csv) · [Aplicación Android (APK)](software/android/aplicacion_android.apk) · [Programas de escritorio](software/escritorio/)
 
 <p align="center"><img src="figuras/proceso_grabacion.jpg" alt="Adquisición de una maniobra con espirómetro y estetoscopio digital" width="430"></p>
 <p align="center"><em>Adquisición de la señal durante una maniobra de exhalación forzada. Fotografía incluida en la memoria.</em></p>
@@ -71,7 +71,7 @@ En [`variantes_duracion/`](variantes_duracion/) hay tres versiones alternativas:
 
 ## Memoria y programas
 
-- [`memoria/memoria.pdf`](memoria/memoria.pdf) es la memoria del TFG.
+- [`memoria/memoria.pdf`](memoria/memoria.pdf) es la memoria del TFG. Si la vista previa de GitHub no carga, puede [descargarse directamente](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/memoria/memoria.pdf).
 - [`software/escritorio/script.py`](software/escritorio/script.py) es el programa de análisis; permite cargar uno o dos WAV y guardar los resultados en una carpeta elegida por el usuario.
 - [`software/escritorio/script_auxiliar.py`](software/escritorio/script_auxiliar.py) analiza un WAV y permite elegir la fuente de captura. Es una variante del programa principal: sus salidas no deben confundirse con las métricas históricas de la memoria.
 - [`software/escritorio/record_v3.py`](software/escritorio/record_v3.py) graba las entradas del estetoscopio y del micrófono del ordenador.
