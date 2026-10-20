@@ -12,7 +12,7 @@ Este repositorio contiene la memoria, la base de señales acústicas y el softwa
 
 ## Base de señales
 
-La base de datos se basa en grabaciones de un único participante considerado sano, sin patologías previas conocidas, aunque su estado de salud no se confirmó clínicamente. Reúne **125 archivos WAV**, distribuidos en cinco clases de 25 registros. Cada archivo representa una maniobra o un segmento de maniobra; el número de archivos no corresponde al número de participantes.
+La base de datos se basa en grabaciones de un único participante sano, cuyo estado de salud se confirmó antes de la adquisición y que no presentaba patologías previas conocidas. Reúne **125 archivos WAV**, distribuidos en cinco clases de 25 registros. Cada archivo representa una maniobra o un segmento de maniobra; el número de archivos no corresponde al número de participantes.
 
 | Directorio | Archivos | Criterio de clasificación |
 | --- | ---: | --- |
