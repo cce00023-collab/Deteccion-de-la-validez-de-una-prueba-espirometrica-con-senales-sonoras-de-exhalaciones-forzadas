@@ -1,8 +1,17 @@
 # Detección de la validez de una prueba espirométrica mediante el análisis de señales sonoras de exhalaciones forzadas
 
-Este repositorio reúne las señales acústicas, la memoria y los programas entregados con el TFG sobre la calidad de maniobras espirométricas. Cualquier persona puede consultarlos y descargarlos. La base de datos contiene **125 grabaciones WAV**, distribuidas en cinco clases de 25 archivos. Cada archivo corresponde a una maniobra o segmento de maniobra; el recuento **no equivale a 125 participantes**.
+**Trabajo Fin de Grado** · Grado en Ingeniería de Tecnologías de Telecomunicación  
+**Universidad de Jaén** · Escuela Politécnica Superior de Linares  
+**Autor:** Carlos Chica Extremera  
+**Tutores:** Francisco Jesús Cañadas Quesada y Alejandro Antonio Salvador Navarro  
+**Año:** 2026
 
-**Aplicación Android:** [descargar la APK](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/software/android/aplicacion_android.apk).
+El TFG estudia si el sonido de una exhalación forzada permite identificar maniobras espirométricas que requieren revisión. Este repositorio público reúne la memoria, las grabaciones utilizadas y los programas de análisis y adquisición. La base de datos contiene **125 archivos WAV**, organizados en cinco clases de 25. Cada archivo corresponde a una maniobra o segmento de maniobra; **125 archivos no equivalen a 125 participantes**.
+
+**Acceso directo:** [Memoria (PDF)](memoria/memoria.pdf) · [Base de datos](audios_metrica/) · [Inventario de señales](inventario.csv) · [Aplicación Android (APK)](software/android/aplicacion_android.apk) · [Programas de escritorio](software/escritorio/)
+
+<p align="center"><img src="figuras/proceso_grabacion.jpg" alt="Adquisición de una maniobra con espirómetro y estetoscopio digital" width="430"></p>
+<p align="center"><em>Adquisición de la señal durante una maniobra de exhalación forzada. Fotografía incluida en la memoria.</em></p>
 
 ## Contenido y etiquetas
 
@@ -28,6 +37,13 @@ Las grabaciones se obtuvieron entre abril y septiembre de 2026. Se registraron e
 
 El programa de adquisición permitía grabar simultáneamente el estetoscopio y el micrófono del ordenador. También se ensayó un móvil en pruebas preliminares. Para este conjunto se conservaron únicamente señales de estetoscopio. Durante la preparación se revisaron la fuente, la clase y el tramo útil de cada registro. Los WAV publicados aquí se copiaron byte por byte del paquete `documentacion.zip` facilitado con el proyecto: el empaquetado de este repositorio no aplica remuestreo, normalización ni reducción de ruido adicional.
 
+## Representación de las señales
+
+El espectrograma muestra cómo se distribuye la energía de una exhalación forzada en el tiempo y la frecuencia. Es una de las representaciones empleadas en la memoria para explicar el análisis acústico; no corresponde a un resultado diagnóstico por sí solo.
+
+<p align="center"><img src="figuras/espectrograma_exhalacion.png" alt="Espectrograma STFT de una exhalación forzada, con tiempo en el eje horizontal y frecuencia en el vertical" width="760"></p>
+<p align="center"><em>Espectrograma STFT de una exhalación forzada. Figura incluida en la memoria.</em></p>
+
 ## Organización
 
 ```text
@@ -44,6 +60,7 @@ software/
   android/                aplicación para analizar un WAV local
 inventario.csv            metadatos técnicos y SHA-256 de cada WAV
 variantes_duracion/       tres versiones alternativas, fuera de la base de datos de 125 WAV
+figuras/                  imágenes de la memoria utilizadas en este README
 ```
 
 La selección de archivos se reconstruyó posteriormente a partir del material del proyecto y no constituye una validación independiente del clasificador. Las etiquetas describen las clases de trabajo del TFG; no son diagnósticos clínicos ni anotaciones independientes de especialistas. No se incluyen curvas espirométricas sincronizadas para confirmar por sí solas la aceptabilidad clínica de cada maniobra.
