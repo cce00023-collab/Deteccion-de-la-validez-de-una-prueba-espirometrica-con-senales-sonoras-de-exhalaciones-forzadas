@@ -12,7 +12,7 @@ Este repositorio contiene la memoria, la base de señales acústicas y el softwa
 
 ## Base de señales
 
-La base publicada reúne **125 archivos WAV**, distribuidos en cinco clases de 25 registros. Cada archivo representa una maniobra o un segmento de maniobra; el número de archivos no corresponde al número de participantes.
+La base de datos se basa en grabaciones de un único participante considerado sano, sin patologías previas conocidas, aunque su estado de salud no se confirmó clínicamente. Reúne **125 archivos WAV**, distribuidos en cinco clases de 25 registros. Cada archivo representa una maniobra o un segmento de maniobra; el número de archivos no corresponde al número de participantes.
 
 | Directorio | Archivos | Criterio de clasificación |
 | --- | ---: | --- |
@@ -26,7 +26,7 @@ Los nombres siguen el patrón `<clase><número>_S.wav`. Los prefijos son `sano`,
 
 ## Adquisición y características técnicas
 
-Las grabaciones se obtuvieron entre abril y septiembre de 2026. Se registraron exhalaciones forzadas y se reprodujeron intencionadamente los eventos de ejecución estudiados. El participante permaneció sentado y con el tronco erguido. Se colocó un estetoscopio digital **Thinklabs One** en el cuello, procurando mantenerlo estable para reducir artefactos de contacto; durante las maniobras se utilizó un espirómetro **CONTEC SP-10**. No se confirmó clínicamente que el participante estuviera sano, aunque no se conocían patologías previas que indicaran lo contrario.
+Las grabaciones se obtuvieron entre abril y septiembre de 2026. Se registraron exhalaciones forzadas y se reprodujeron intencionadamente los eventos de ejecución estudiados. El participante permaneció sentado y con el tronco erguido. Se colocó un estetoscopio digital **Thinklabs One** en el cuello, procurando mantenerlo estable para reducir artefactos de contacto; durante las maniobras se utilizó un espirómetro **CONTEC SP-10**.
 
 La captura original del estetoscopio se realizó en WAV monocanal, PCM de 16 bits y a **16 000 Hz**. El programa de adquisición permitía registrar simultáneamente el estetoscopio y el micrófono del ordenador. También se ensayó un móvil en pruebas preliminares. La base aquí distribuida contiene solo señales de estetoscopio. Para consultar las propiedades efectivas de cada WAV, incluidas su frecuencia de muestreo, codificación, número de muestras y duración, debe utilizarse [`inventario.csv`](inventario.csv).
 
