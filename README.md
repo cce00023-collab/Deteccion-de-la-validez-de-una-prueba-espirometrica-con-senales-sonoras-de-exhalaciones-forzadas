@@ -27,7 +27,7 @@ Los nombres siguen el patrón `<clase><numero>_S.wav`, con números del 1 al 25 
 
 ## Formato y duración
 
-Todos los archivos son WAV mono. **123** son PCM de 16 bits con frecuencia de muestreo de **16 000 Hz**. Las dos excepciones son `audios_metrica/esfuerzo_insuficiente/esfinsuf3_S.wav` y `audios_metrica/esfuerzo_insuficiente/esfinsuf14_S.wav`: son WAV de coma flotante de 32 bits a **4 000 Hz**. Estos valores describen los archivos distribuidos, no la frecuencia de trabajo del algoritmo, que remuestrea las entradas a 4 000 Hz durante el análisis.
+En general, se trabaja con grabaciones WAV mono, PCM de 16 bits y una frecuencia de muestreo de **16 000 Hz**.
 
 El tamaño conjunto de los WAV es de aproximadamente **14,22 MB**. `inventario.csv` ofrece, para cada archivo, su clase, frecuencia de muestreo, canales, resolución, codificación, número de muestras, duración, tamaño y SHA-256. Las duraciones se calculan a partir del número de tramas y la frecuencia indicada en la cabecera WAV.
 
