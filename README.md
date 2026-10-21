@@ -55,7 +55,7 @@ software/android/        aplicación Android
 software/escritorio/     programas Python de grabación y análisis
 ```
 
-La selección publicada se reconstruyó posteriormente a partir del material del proyecto y no constituye una validación independiente del clasificador. Las etiquetas son categorías de trabajo, no diagnósticos clínicos ni anotaciones independientes de especialistas. No se incluyen curvas espirométricas sincronizadas que permitan verificar por sí solas la aceptabilidad clínica de cada maniobra.
+Los criterios de análisis se definieron a partir de una revisión bibliográfica amplia y de consultas de los tutores con neumólogos, con el objetivo de aproximar la interpretación de los patrones acústicos a las incidencias de ejecución relevantes en la práctica clínica. Estas consultas orientaron el diseño, pero no constituyen una validación clínica del clasificador: las etiquetas son categorías de trabajo, no diagnósticos ni anotaciones independientes de especialistas. Tampoco se incluyen curvas espirométricas sincronizadas que permitan verificar por sí solas la aceptabilidad clínica de cada maniobra.
 
 ## Software
 
