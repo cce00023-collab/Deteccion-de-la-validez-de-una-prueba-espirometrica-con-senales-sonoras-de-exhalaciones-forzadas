@@ -47,8 +47,8 @@ La decisión sigue una regla jerárquica: primero se evalúan los eventos de tos
 <p align="center"><img src="figuras/espectrograma_exhalacion.png" alt="Espectrograma STFT de una exhalación forzada; tiempo en segundos y frecuencia en hercios" width="760"></p>
 <p align="center"><em>Representación STFT de una exhalación forzada empleada en la memoria.</em></p>
 
-<p align="center"><img src="figuras/analisis_tos.png" alt="Salida gráfica del análisis de una señal con tos: envolventes temporales, espectrogramas Log-Mel y marca del evento" width="760"></p>
-<p align="center"><em>Análisis de una maniobra con tos: el transitorio aparece marcado en la envolvente y en las representaciones Log-Mel.</em></p>
+<p align="center"><img src="figuras/analisis_tos.png" alt="RMS y envolventes de una exhalación forzada con un único PEF acústico marcado en rojo y un evento de tos posterior marcado en verde" width="760"></p>
+<p align="center"><em>Exhalación forzada con un único PEF acústico (punto rojo) y un evento de tos posterior (cruz verde). La RMS y las envolventes muestran la separación temporal entre ambos.</em></p>
 
 ## Organización del repositorio
 
