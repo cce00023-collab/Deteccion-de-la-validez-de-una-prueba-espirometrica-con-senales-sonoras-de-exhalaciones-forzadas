@@ -50,6 +50,9 @@ La decisión sigue una regla jerárquica: primero se evalúan los eventos de tos
 <p align="center"><img src="figuras/analisis_tos.png" alt="RMS y envolventes de una exhalación forzada con un único PEF acústico marcado en rojo y un evento de tos posterior marcado en verde" width="760"></p>
 <p align="center"><em>Exhalación forzada con un único PEF acústico (punto rojo) y un evento de tos posterior (cruz verde). La RMS y las envolventes muestran la separación temporal entre ambos.</em></p>
 
+<p align="center"><img src="figuras/senal_sin_eventos.png" alt="Envolventes y representaciones Log-Mel de una maniobra sin eventos invalidantes identificados" width="760"></p>
+<p align="center"><em>Maniobra sin eventos invalidantes identificados: envolventes y Log-Mel antes y después de la reducción de ruido.</em></p>
+
 ## Organización del repositorio
 
 ```text
@@ -75,6 +78,9 @@ py -3.10 script.py
 ```
 
 La [aplicación Android](software/android/aplicacion_android.apk) analiza un WAV local; no graba audio. Requiere Android 7.0 o superior y un dispositivo compatible con aplicaciones de 32 bits.
+
+<p align="center"><img src="figuras/app_seleccion_audio.png" alt="Pantalla de selección de un archivo WAV local en la aplicación Android" width="760"></p>
+<p align="center"><em>Selección de un archivo WAV local en la aplicación Android antes del análisis.</em></p>
 
 <p align="center"><img src="figuras/app_resultado_esfuerzo_insuficiente.png" alt="Pantalla de resultado de la aplicación Android para una maniobra clasificada como esfuerzo insuficiente" width="760"></p>
 <p align="center"><em>Resultado de clasificación en la aplicación Android, con la clase asignada y los indicadores utilizados para revisarla.</em></p>
