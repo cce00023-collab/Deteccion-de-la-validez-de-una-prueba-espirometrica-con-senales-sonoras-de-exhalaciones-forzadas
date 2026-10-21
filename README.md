@@ -39,10 +39,16 @@ El tamaño conjunto de los 125 WAV es de aproximadamente **14,22 MB**. El invent
 
 El análisis selecciona el segmento útil de la grabación, aplica una reducción controlada de ruido y remuestrea la señal a **4 kHz** para trabajar sobre una banda común. A partir de la señal procesada se calculan la envolvente temporal, la transformada de Fourier de tiempo corto (STFT) y las representaciones Mel y Log-Mel. El máximo principal de la envolvente se denomina pico acústico $PEF_a$; es una referencia de amplitud relativa, no una medida de flujo espiratorio.
 
+<p align="center"><img src="figuras/recorte_inicial.png" alt="Espectrogramas del registro completo y del segmento de exhalación seleccionado, con las marcas de inicio y fin" width="760"></p>
+<p align="center"><em>Recorte del segmento útil de una grabación real: arriba, registro completo; abajo, exhalación seleccionada.</em></p>
+
 La decisión sigue una regla jerárquica: primero se evalúan los eventos de tos y los esfuerzos múltiples; después, el posible retraso del pico acústico y las características del final de la exhalación. Si no se detecta un criterio acústico de invalidez, la maniobra se clasifica como aceptable desde el punto de vista acústico. En la evaluación descrita en la memoria, 106 de las 125 clasificaciones coincidieron con la referencia, lo que corresponde a una exactitud global del **84,80 %**. Este resultado no equivale a una validación clínica independiente.
 
 <p align="center"><img src="figuras/espectrograma_exhalacion.png" alt="Espectrograma STFT de una exhalación forzada; tiempo en segundos y frecuencia en hercios" width="760"></p>
 <p align="center"><em>Representación STFT de una exhalación forzada empleada en la memoria.</em></p>
+
+<p align="center"><img src="figuras/analisis_tos.png" alt="Salida gráfica del análisis de una señal con tos: envolventes temporales, espectrogramas Log-Mel y marca del evento" width="760"></p>
+<p align="center"><em>Análisis de una maniobra con tos: el transitorio aparece marcado en la envolvente y en las representaciones Log-Mel.</em></p>
 
 ## Organización del repositorio
 
@@ -69,6 +75,9 @@ py -3.10 script.py
 ```
 
 La [aplicación Android](software/android/aplicacion_android.apk) analiza un WAV local; no graba audio. Requiere Android 7.0 o superior y un dispositivo compatible con aplicaciones de 32 bits.
+
+<p align="center"><img src="figuras/app_resultado_esfuerzo_insuficiente.png" alt="Pantalla de resultado de la aplicación Android para una maniobra clasificada como esfuerzo insuficiente" width="760"></p>
+<p align="center"><em>Resultado de clasificación en la aplicación Android, con la clase asignada y los indicadores utilizados para revisarla.</em></p>
 
 ## Acceso
 
