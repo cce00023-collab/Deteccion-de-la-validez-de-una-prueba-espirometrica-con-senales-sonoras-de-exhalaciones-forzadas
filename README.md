@@ -8,7 +8,16 @@
 
 Este repositorio contiene la memoria, la base de señales acústicas y el software desarrollados para estudiar la aceptabilidad de maniobras espirométricas de exhalación forzada. El sistema identifica eventos acústicos compatibles con tos, esfuerzos múltiples, esfuerzo insuficiente y terminación precoz. Su resultado es una clasificación de apoyo basada en el sonido; no sustituye la evaluación clínica ni la inspección de las curvas espirométricas.
 
-**Acceso a los materiales:** [Memoria (PDF)](memoria/memoria.pdf) · [Descargar memoria](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/memoria/memoria.pdf) · [Señales WAV](audios_metrica/) · [Inventario](inventario.csv) · [Aplicación Android (APK)](software/android/aplicacion_android.apk) · [Software de escritorio](software/escritorio/)
+## Descargas del TFG
+
+| Material | Descarga | Contenido |
+| --- | --- | --- |
+| Memoria | [Descargar PDF](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/memoria/memoria.pdf) | Memoria completa del trabajo. |
+| Código Python | [Ver código y guía de uso](software/escritorio/) | Programas de análisis de WAV y grabación, con enlaces de descarga individuales. |
+| Aplicación Android | [Descargar APK](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/software/android/aplicacion_android.apk) | Instalador de la aplicación de análisis de audio (87,5 MB). |
+| Presentación de defensa | [Descargar PDF](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/raw/refs/heads/main/presentacion/presentacion.pdf) | Diapositivas de la defensa. |
+
+También puedes [descargar todo el repositorio en ZIP](https://github.com/cce00023-collab/Deteccion-de-la-validez-de-una-prueba-espirometrica-con-senales-sonoras-de-exhalaciones-forzadas/archive/refs/heads/main.zip), incluidas las [señales WAV](audios_metrica/) y su [inventario](inventario.csv).
 
 ## Base de señales
 
@@ -60,6 +69,7 @@ audios_metrica/          125 señales WAV, separadas en cinco clases
 figuras/                 imágenes de la memoria reproducidas en este README
 inventario.csv           características técnicas de cada WAV
 memoria/memoria.pdf      memoria del TFG
+presentacion/presentacion.pdf  diapositivas de la defensa
 software/android/        aplicación Android
 software/escritorio/     programas Python de grabación y análisis
 ```
