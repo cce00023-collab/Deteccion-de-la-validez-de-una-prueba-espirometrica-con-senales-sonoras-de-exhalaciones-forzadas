@@ -1,34 +1,22 @@
-# -*- coding: utf-8 -*-
-# =====================================================
-# RESUMEN MATEMATICO DEL PROGRAMA
-# =====================================================
-# Senal discreta: x[n], n = 0,...,N-1; tiempo: t_n = n/fs.
-# Normalizacion: x_norm[n] = x[n] / max_n |x[n]|, si max_n |x[n]| > 0.
-# Ventana de analisis: w[n], longitud Nw; salto H = Nw*(1-S).
-# RMS por ventana: RMS[k] = sqrt((1/Nw) * sum_{n=0}^{Nw-1} x^2[kH+n]).
-# STFT: X[m,k] = sum_n x[n] w[n-kH] exp(-j*2*pi*m*n/NFFT).
-# Potencia espectral: P[m,k] = |X[m,k]|^2.
-# Escala Mel: Mel(f) = 2595*log10(1 + f/700).
-# Inversa Mel: f = 700*(10^(Mel/2595) - 1).
-# Banco Mel: E[b,k] = sum_m M[b,m] P[m,k].
-# Log-Mel: L[b,k] = log10(E[b,k] + eps).
-# Envolvente temporal: e[k] = media_b(L[b,k]), suavizada y normalizada a [0,1].
-# Reduccion de ruido: se estima ruido por mediana temporal y se aplica ganancia limitada.
-# Ganancia espectral: G[b,k] = max(gain_floor, 1 - alpha*R[b,k]/(P[b,k]+eps)).
-# Senal denoised: Y[m,k] = G[m,k] X[m,k]; y_den[n] = iSTFT(Y[m,k]).
-# PEF acustico: t_PEF = argmax_t e(t) dentro del evento espiratorio aceptado.
-# Esfuerzo insuficiente: PEF retrasado si t_PEF - t_inicio > 0.150 s.
-# Tos: evento breve de alta energia, contrastado con RMS y banda 500-1500 Hz.
-# Esfuerzo multiple: reaparicion significativa de energia tras una bajada o apagon.
-# Terminacion precoz: caida brusca de energia tras el PEF y/o perdida final de energia.
-# =====================================================
+"""Analiza un WAV de exhalación forzada y muestra la clasificación acústica.
 
+El programa pide la fuente de captura y una carpeta de salida. Remuestrea
+la señal a 4 kHz y calcula la RMS, las envolventes y el espectrograma Log-Mel
+para detectar tos, esfuerzos múltiples, retraso del pico acústico y
+terminación precoz.
+
+Los tiempos se expresan en segundos y las frecuencias en hercios. El PEF
+acústico es un máximo de la envolvente y no mide el flujo espiratorio.
+"""
+
+import logging
 import os
+import re
+from pathlib import Path
 import math
 import tempfile
 import platform
 import subprocess
-import builtins
 import numpy as np
 import scipy.io.wavfile as wav
 import scipy.signal as signal
@@ -36,23 +24,12 @@ import scipy.ndimage as ndimage
 from scipy.fft import next_fast_len
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
-from tkinter import Tk, filedialog
+from tkinter import Tk, filedialog, messagebox, simpledialog, ttk
 
-# =====================================================
-# SALIDA POR PANTALLA CONTROLADA
-# =====================================================
-# Se silencian todos los print internos antiguos.
-# Para mostrar el resumen final se usa builtins.print().
-print = lambda *args, **kwargs: None
-
-# =====================================================
-# CONFIGURACION ESPECIFICA POR DISPOSITIVO
-# =====================================================
-# Aquí se controlan la fuerza del filtro y la sensibilidad de la tos
-# para que no elimine la subida en PC/Estetoscopio y no introduzca picos artificiales en Móvil.
-# IMPORTANTE, al tomarse la decisión de solo operar con el estetosocopio, se deja la configuración
+logger = logging.getLogger(__name__)
 
 
+# Ajustes de reducción de ruido y detección de tos por fuente de captura.
 CONFIG_FUENTES = {
     "MOVIL": {
         "lmediant": 20,              # Ventana LARGA para NO eliminar parte del soplido
@@ -70,7 +47,7 @@ CONFIG_FUENTES = {
         "tos_onset_db": 5.0,
         "tos_offset_db": 2.5,
         "tos_pad_pre": 0.06,
-        "tos_pad_post": 0.10   
+        "tos_pad_post": 0.10
     },
     "ESTETOSCOPIO": {
         "lmediant": 40,              # Ventana moderada: estable sin ser excesiva
@@ -117,7 +94,7 @@ tos_gain_floor = 0.90
 # =====================================================
 
 def seleccionar_audio(nombre_dispositivo):
-    print(f"Selecciona el audio correspondiente a: {nombre_dispositivo}")
+    logger.debug(f"Selecciona el audio correspondiente a: {nombre_dispositivo}")
     ruta = filedialog.askopenfilename(
         title=f"Selecciona el audio de {nombre_dispositivo}",
         filetypes=[("Archivos WAV", "*.wav"), ("Todos los archivos", "*.*")]
@@ -132,13 +109,13 @@ def seleccionar_audio_opcional(nombre_dispositivo):
     Igual que seleccionar_audio(), pero si se cancela devuelve None.
     Sirve para comparar dos audios o mostrar solo uno.
     """
-    print(f"Selecciona el audio correspondiente a: {nombre_dispositivo}")
+    logger.debug(f"Selecciona el audio correspondiente a: {nombre_dispositivo}")
     ruta = filedialog.askopenfilename(
         title=f"Selecciona el audio de {nombre_dispositivo}",
         filetypes=[("Archivos WAV", "*.wav"), ("Todos los archivos", "*.*")]
     )
     if ruta == "":
-        print(f"No se ha seleccionado archivo para {nombre_dispositivo}.")
+        logger.debug(f"No se ha seleccionado archivo para {nombre_dispositivo}.")
         return None
     return ruta
 
@@ -955,27 +932,27 @@ def detectar_mascara_tos_en_muestras(fs, y, config):
     eventos = eventos_tos + eventos_artefacto + eventos_pef
     eventos = sorted(eventos, key=lambda e: e["pico"])
 
-    print("\n" + "="*110)
-    print("        DETECCION DE TOS + PEF POR CURVAS REALES")
-    print("="*110)
-    print("  Curva:                         RMS 25 ms + LPF Butterworth 4º fc=6 Hz + gauss 20 ms")
-    print("  PEF:                           1 curva real = 1 máximo principal")
-    print("  Criterio PEF:                  1º PEF por curva real; 2º PEF exige tiempo + valle basal bajo + duración inicio10-fin10 >= 300 ms")
-    print("  Tos:                           máximo local + duración 0.05-0.30 s")
-    print("  Tos segura:                    duración compatible + frecuencia dominante 500-1500 Hz")
-    print("  Eventos largos no principales: descartados como hombros/ondulaciones")
-    print(f"  Máximos locales candidatos tos: {len(maximos_agrupados)}")
-    print(f"  Máximos descartados forma:      {len(maximos_descartados_forma)}")
-    print(f"  PEF por curvas reales:          {len(eventos_pef)}")
-    print(f"  Tos totales detectadas:         {len(eventos_tos)}")
-    print(f"  Tos seguras 500-1500 Hz:        {len(eventos_tos_segura)}")
-    print(f"  Tos solo por duración:          {len(eventos_tos_duracion)}")
-    print(f"  Artefactos/hombros descartados: {len(eventos_artefacto)}")
+    logger.debug("\n" + "="*110)
+    logger.debug("        DETECCION DE TOS + PEF POR CURVAS REALES")
+    logger.debug("="*110)
+    logger.debug("  Curva:                         RMS 25 ms + LPF Butterworth 4º fc=6 Hz + gauss 20 ms")
+    logger.debug("  PEF:                           1 curva real = 1 máximo principal")
+    logger.debug("  Criterio PEF:                  1º PEF por curva real; 2º PEF exige tiempo + valle basal bajo + duración inicio10-fin10 >= 300 ms")
+    logger.debug("  Tos:                           máximo local + duración 0.05-0.30 s")
+    logger.debug("  Tos segura:                    duración compatible + frecuencia dominante 500-1500 Hz")
+    logger.debug("  Eventos largos no principales: descartados como hombros/ondulaciones")
+    logger.debug(f"  Máximos locales candidatos tos: {len(maximos_agrupados)}")
+    logger.debug(f"  Máximos descartados forma:      {len(maximos_descartados_forma)}")
+    logger.debug(f"  PEF por curvas reales:          {len(eventos_pef)}")
+    logger.debug(f"  Tos totales detectadas:         {len(eventos_tos)}")
+    logger.debug(f"  Tos seguras 500-1500 Hz:        {len(eventos_tos_segura)}")
+    logger.debug(f"  Tos solo por duración:          {len(eventos_tos_duracion)}")
+    logger.debug(f"  Artefactos/hombros descartados: {len(eventos_artefacto)}")
 
     if len(eventos) > 0:
-        print("\n  EVENTOS:")
+        logger.debug("\n  EVENTOS:")
         for k, ev in enumerate(eventos, 1):
-            print(
+            logger.debug(
                 f"    Evento {k}: "
                 f"tipo={ev['tipo']} | "
                 f"inicio10={ev['inicio']:.3f}s | "
@@ -988,16 +965,16 @@ def detectar_mascara_tos_en_muestras(fs, y, config):
             )
 
     if len(maximos_descartados_forma) > 0:
-        print("\n  MAXIMOS DESCARTADOS POR FORMA:")
+        logger.debug("\n  MAXIMOS DESCARTADOS POR FORMA:")
         for k, (idx, motivo) in enumerate(maximos_descartados_forma, 1):
-            print(
+            logger.debug(
                 f"    Descartado {k}: "
                 f"t={idx/fs:.3f}s | "
                 f"motivo={motivo} | "
                 f"valor={curva[idx]:.3f}"
             )
 
-    print("="*110 + "\n")
+    logger.debug("="*110 + "\n")
 
     detectar_mascara_tos_en_muestras.ultimos_eventos = eventos
     detectar_mascara_tos_en_muestras.ultimos_maximos = [
@@ -1142,16 +1119,16 @@ def controlar_tos_saturada_antes_normalizar(fs, y, config):
     y_tos_bajada = y * gain_tos
     y_bajada = alpha * y_tos_bajada + (1.0 - alpha) * y
 
-    print("\n" + "="*80)
-    print("        CONTROL DE TOS SATURADA ANTES DE NORMALIZAR")
-    print("="*80)
-    print("  La tos no será la referencia principal de normalización.")
-    print(f"  Muestras de tos:             {np.sum(mascara_tos)}")
-    print(f"  Ref. soplido percentil 99:   {ref_soplido:.6f}")
-    print(f"  Pico tos original:           {pico_tos:.6f}")
-    print(f"  Límite tos aplicado:         {limite_tos:.6f}")
-    print(f"  Gain aplicado a tos:         {gain_tos:.3f}")
-    print("="*80 + "\n")
+    logger.debug("\n" + "="*80)
+    logger.debug("        CONTROL DE TOS SATURADA ANTES DE NORMALIZAR")
+    logger.debug("="*80)
+    logger.debug("  La tos no será la referencia principal de normalización.")
+    logger.debug(f"  Muestras de tos:             {np.sum(mascara_tos)}")
+    logger.debug(f"  Ref. soplido percentil 99:   {ref_soplido:.6f}")
+    logger.debug(f"  Pico tos original:           {pico_tos:.6f}")
+    logger.debug(f"  Límite tos aplicado:         {limite_tos:.6f}")
+    logger.debug(f"  Gain aplicado a tos:         {gain_tos:.3f}")
+    logger.debug("="*80 + "\n")
 
     return y_bajada
 
@@ -1212,14 +1189,14 @@ def recortar_espacio_blanco_inicio(y, fs,
 
     y_recortada = y[idx_corte:]
 
-    print("\n" + "="*80)
-    print("        RECORTE DE ESPACIO BLANCO INICIAL")
-    print("="*80)
-    print(f"  Inicio útil detectado:       {idx_inicio / fs:.4f} s")
-    print(f"  Margen previo conservado:    {margen_pre_s:.4f} s (sin espacio blanco)")
-    print(f"  Recorte aplicado:            {idx_corte / fs:.4f} s")
-    print("  Nuevo inicio de gráfica:     t = 0 s")
-    print("="*80 + "\n")
+    logger.debug("\n" + "="*80)
+    logger.debug("        RECORTE DE ESPACIO BLANCO INICIAL")
+    logger.debug("="*80)
+    logger.debug(f"  Inicio útil detectado:       {idx_inicio / fs:.4f} s")
+    logger.debug(f"  Margen previo conservado:    {margen_pre_s:.4f} s (sin espacio blanco)")
+    logger.debug(f"  Recorte aplicado:            {idx_corte / fs:.4f} s")
+    logger.debug("  Nuevo inicio de gráfica:     t = 0 s")
+    logger.debug("="*80 + "\n")
 
     return y_recortada, idx_corte
 
@@ -1231,8 +1208,8 @@ def recortar_espacio_blanco_inicio(y, fs,
 def cargar_y_procesar(ruta_audio, nombre_dispositivo, output_folder):
     fs_raw, y_raw = wav.read(ruta_audio)
 
-    print(f"\n{nombre_dispositivo}")
-    print(f"Archivo original = {os.path.basename(ruta_audio)}")
+    logger.debug(f"\n{nombre_dispositivo}")
+    logger.debug(f"Archivo original = {os.path.basename(ruta_audio)}")
 
     y_raw_float = convertir_a_float(y_raw)
     y_raw_graficas = normalizar_audio(y_raw_float[:, 0] if y_raw_float.ndim == 2 else y_raw_float)
@@ -1575,7 +1552,7 @@ def calcular_stft_power(y, fs, normalizar_entrada=True, ref_power_max=None):
 
 
 # =====================================================
-# DETECCION VECTORIZADA (ULTRA-RÁPIDA)
+# Detección de eventos mediante operaciones vectorizadas
 # =====================================================
 
 def calcular_score_terminacion_precoz(
@@ -1583,25 +1560,25 @@ def calcular_score_terminacion_precoz(
     fs,
     mascara_tos: np.ndarray | None = None,
     umbral_bajo: float = 0.15,        # Umbral del 15% (Final de nuestra ventana crítica)
-    tiempo_optimo_caida: float = 0.5, 
-    tiempo_max_caida: float = 2,    
-    umbral_score: float = 0.85        
+    tiempo_optimo_caida: float = 0.5,
+    tiempo_max_caida: float = 2,
+    umbral_score: float = 0.85
 ) -> dict:
     """
     Score de terminación precoz sobre envolvente temporal.
-    Calcula de forma independiente la varianza espectral ESTRICTA entre bandas 
+    Calcula de forma independiente la varianza espectral ESTRICTA entre bandas
     en la ventana desde el PEF hasta el 15%, ignorando frames de tos.
     """
     y = normalizar_audio(y)
 
     if len(y) < 32 or np.max(np.abs(y)) <= 0:
-        print("\n" + "="*50)
-        print("     ANÁLISIS TERMINACIÓN PRECOZ (ERROR)     ")
-        print("="*50)
-        print("  Señal vacía o demasiado corta.")
-        print("="*50 + "\n")
+        logger.debug("\n" + "="*50)
+        logger.debug("     ANÁLISIS TERMINACIÓN PRECOZ (ERROR)     ")
+        logger.debug("="*50)
+        logger.debug("  Señal vacía o demasiado corta.")
+        logger.debug("="*50 + "\n")
         return {
-            "score": 0.0, "tiempo": 0.0, "caida_total": 0.0, "homogeneidad": 0.0, "correlacion": 0.0, 
+            "score": 0.0, "tiempo": 0.0, "caida_total": 0.0, "homogeneidad": 0.0, "correlacion": 0.0,
             "terminacion_precoz": False, "mensaje": "No se trata de una posible terminación precoz",
             "varianza_ventana": 0.0
         }
@@ -1623,13 +1600,13 @@ def calcular_score_terminacion_precoz(
             valido = ~(np.interp(x_new, x_old, mascara_tos.astype(float)) > 0.5)
 
     if not np.any(valido):
-        print("\n" + "="*50)
-        print("     ANÁLISIS TERMINACIÓN PRECOZ (ERROR)     ")
-        print("="*50)
-        print("  La señal solo contiene tos o no hay zonas válidas.")
-        print("="*50 + "\n")
+        logger.debug("\n" + "="*50)
+        logger.debug("     ANÁLISIS TERMINACIÓN PRECOZ (ERROR)     ")
+        logger.debug("="*50)
+        logger.debug("  La señal solo contiene tos o no hay zonas válidas.")
+        logger.debug("="*50 + "\n")
         return {
-            "score": 0.0, "tiempo": 0.0, "caida_total": 0.0, "homogeneidad": 0.0, "correlacion": 0.0, 
+            "score": 0.0, "tiempo": 0.0, "caida_total": 0.0, "homogeneidad": 0.0, "correlacion": 0.0,
             "terminacion_precoz": False, "mensaje": "No se trata de una posible terminación precoz",
             "varianza_ventana": 0.0
         }
@@ -1641,7 +1618,7 @@ def calcular_score_terminacion_precoz(
 
     if valor_pef <= 0:
         return {
-            "score": 0.0, "tiempo": float(tiempos[idx_pef]), "caida_total": 0.0, "homogeneidad": 0.0, "correlacion": 0.0, 
+            "score": 0.0, "tiempo": float(tiempos[idx_pef]), "caida_total": 0.0, "homogeneidad": 0.0, "correlacion": 0.0,
             "terminacion_precoz": False, "mensaje": "No se trata de una posible terminación precoz",
             "varianza_ventana": 0.0
         }
@@ -1687,25 +1664,25 @@ def calcular_score_terminacion_precoz(
 
     # Calcular espectrograma
     f, t_stft, power, _ = calcular_stft_power(y, fs, normalizar_entrada=False)
-    
+
     # Filtro 1: Encontrar qué frames están dentro del rango temporal (PEF hasta 15%)
     dentro_ventana = (t_stft >= tiempo_pef) & (t_stft <= tiempo_bajo)
-    
+
     # Filtro 2: Mapear y excluir frames que coincidan con la máscara de tos
     idx_valido_stft = np.clip((t_stft * fs).astype(int), 0, n - 1)
     frames_sin_tos = valido[idx_valido_stft]
-    
+
     # Intersección final: Dentro de la ventana crítica Y libres de tos
     frames_finales = dentro_ventana & frames_sin_tos
 
     if np.any(frames_finales):
         power_ventana = power[:, frames_finales]
-        
+
         # Definimos las 8 bandas de frecuencia hasta 2000 Hz
         fmax = min(2000, fs / 2)
         n_bandas = 8
         bordes = np.linspace(0, fmax, n_bandas + 1)
-        
+
         energia_bandas = []
         for i in range(n_bandas):
             idx_f = (f >= bordes[i]) & (f < bordes[i + 1])
@@ -1713,12 +1690,12 @@ def calcular_score_terminacion_precoz(
                 energia_bandas.append(np.sum(power_ventana[idx_f, :], axis=0))
             else:
                 energia_bandas.append(np.zeros(power_ventana.shape[1]))
-        
+
         energia_bandas = np.array(energia_bandas)
-        
+
         # Varianza entre las 8 bandas para cada frame de forma individual
         varianzas_por_frame = np.var(energia_bandas, axis=0)
-        
+
         # Promedio final de las varianzas en este tramo limpio
         varianza_bandas_final = float(np.mean(varianzas_por_frame))
     else:
@@ -1727,25 +1704,25 @@ def calcular_score_terminacion_precoz(
     # =========================================================================
     # 8. IMPRESIÓN UNIFICADA EN TERMINAL
     # =========================================================================
-    print("\n" + "="*60)
-    print("                ANÁLISIS DE TRANSMISIÓN / PRECOCIDAD        ")
-    print("="*60)
-    print(f"  Veredicto:             {mensaje_texto.upper()}")
-    print(f"  Score de Precocidad:   {score_final:.3f} / 1.000 (Umbral: {umbral_score:.2f})")
-    print(f"  Muestras de caída:     {muestras_caida} muestras (PEF -> {int(umbral_bajo*100)}%)")
-    print(f"  Tiempo de caída:       {tiempo_caida_total:.3f} segundos")
-    print(f"  Rango Evaluado STFT:   {tiempo_pef:.3f} s  -->  {tiempo_bajo:.3f} s")
-    print(f"  Varianza Espectral:    {varianza_bandas_final:.6f} (Buen estado: casi 0)")
-    print("="*60 + "\n")
+    logger.debug("\n" + "="*60)
+    logger.debug("                ANÁLISIS DE TRANSMISIÓN / PRECOCIDAD        ")
+    logger.debug("="*60)
+    logger.debug(f"  Veredicto:             {mensaje_texto.upper()}")
+    logger.debug(f"  Score de Precocidad:   {score_final:.3f} / 1.000 (Umbral: {umbral_score:.2f})")
+    logger.debug(f"  Muestras de caída:     {muestras_caida} muestras (PEF -> {int(umbral_bajo*100)}%)")
+    logger.debug(f"  Tiempo de caída:       {tiempo_caida_total:.3f} segundos")
+    logger.debug(f"  Rango Evaluado STFT:   {tiempo_pef:.3f} s  -->  {tiempo_bajo:.3f} s")
+    logger.debug(f"  Varianza Espectral:    {varianza_bandas_final:.6f} (Buen estado: casi 0)")
+    logger.debug("="*60 + "\n")
 
     return {
         "score": score_final,
         "tiempo": float(tiempos[idx_bajo]),
         "caida_total": caida_total,
-        "homogeneidad": score_final,          
-        "correlacion": tiempo_caida_total,   
+        "homogeneidad": score_final,
+        "correlacion": tiempo_caida_total,
         "terminacion_precoz": terminacion,
-        "muestras_caida": muestras_caida,       
+        "muestras_caida": muestras_caida,
         "tiempo_caida": tiempo_caida_total,
         "mensaje": mensaje_texto,
         "varianza_ventana": varianza_bandas_final  # Clave actualizada en el diccionario
@@ -1994,11 +1971,11 @@ def calcular_pendiente_logmel_antes_energia_nula(
     y_den = normalizar_audio(y_den)
 
     if len(y_den) < 32 or np.max(np.abs(y_den)) <= 0:
-        print("\n" + "="*95)
-        print("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
-        print("="*95)
-        print("  Señal vacía o demasiado corta.")
-        print("="*95 + "\n")
+        logger.debug("\n" + "="*95)
+        logger.debug("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
+        logger.debug("="*95)
+        logger.debug("  Señal vacía o demasiado corta.")
+        logger.debug("="*95 + "\n")
 
         return {
             "pendientes_bandas": None,
@@ -2046,11 +2023,11 @@ def calcular_pendiente_logmel_antes_energia_nula(
     )
 
     if Zxx_hr.size == 0 or len(t_mel) < 5:
-        print("\n" + "="*95)
-        print("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
-        print("="*95)
-        print("  No hay frames suficientes para análisis de alta resolución.")
-        print("="*95 + "\n")
+        logger.debug("\n" + "="*95)
+        logger.debug("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
+        logger.debug("="*95)
+        logger.debug("  No hay frames suficientes para análisis de alta resolución.")
+        logger.debug("="*95 + "\n")
 
         return {
             "pendientes_bandas": None,
@@ -2224,11 +2201,11 @@ def calcular_pendiente_logmel_antes_energia_nula(
     frames_analisis = (t_mel >= tiempo_inicio) & (t_mel <= tiempo_fin)
 
     if np.sum(frames_analisis) < 5:
-        print("\n" + "="*95)
-        print("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
-        print("="*95)
-        print("  Hay muy pocos frames en la ventana de análisis.")
-        print("="*95 + "\n")
+        logger.debug("\n" + "="*95)
+        logger.debug("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
+        logger.debug("="*95)
+        logger.debug("  Hay muy pocos frames en la ventana de análisis.")
+        logger.debug("="*95 + "\n")
 
         return {
             "pendientes_bandas": None,
@@ -2429,32 +2406,32 @@ def calcular_pendiente_logmel_antes_energia_nula(
     # Imprimir resultados
     # -------------------------------------------------
 
-    print("\n" + "="*95)
-    print("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
-    print("="*95)
-    print(f"  Estado detección:                    {aviso}")
-    print(f"  Resolución temporal usada:            {hop_hr / fs:.4f} s por frame")
-    print(f"  Ventana STFT interna:                 {nperseg_hr / fs:.4f} s")
-    print(f"  Tiempo apagado global bajas:          {tiempo_apagado_global:.4f} s")
-    print(f"  Tiempo corte máximo:                  {tiempo_corte:.4f} s")
-    print(f"  Ventana analizada:                    {tiempo_inicio:.4f} s  -->  {tiempo_fin:.4f} s")
-    print(f"  Frames analizados:                    {np.sum(frames_analisis)}")
-    print(f"  Bandas bajas analizadas:              {num_bandas_bajas}/{num_bandas_totales}")
-    print(f"  Energía pre-corte:                    {energia_pre_corte:.4f}")
-    print(f"  Energía post-corte:                   {energia_post_corte:.4f}")
-    print(f"  Caída máxima en dB:                   {caida_maxima_db:.3f} dB")
-    print(f"  Caída máxima lineal:                  {caida_maxima_lineal:.4f}")
-    print(f"  Bandas activas antes del corte:       {activas_antes_corte:.4f}")
-    print(f"  Bandas activas después del corte:     {activas_despues_corte:.4f}")
-    print(f"  Colapso bandas activas:               {colapso_activos_frame:.4f}")
-    print(f"  Spread tiempos apagado bandas:        {spread_tiempos_caida:.4f} s")
-    print(f"  Tiempo colapso bandas activas 80-20:  {tiempo_colapso_bandas:.4f} s")
-    print(f"  Pendiente global bajas:               {pendiente_global_bajas:.3f} dB/s")
-    print(f"  Pendiente media por banda:            {pendiente_media:.3f} dB/s")
-    print(f"  Dispersión pendientes bandas:         {dispersion_pendientes:.3f}")
-    print(f"  Correlación banda-pendiente:          {correlacion_banda_pendiente:.3f}")
-    print(f"  Interpretación:                       {mensaje}")
-    print("="*95 + "\n")
+    logger.debug("\n" + "="*95)
+    logger.debug("        ANALISIS DE CORTE BRUSCO EN BANDAS BAJAS LOG-MEL ORIGINAL")
+    logger.debug("="*95)
+    logger.debug(f"  Estado detección:                    {aviso}")
+    logger.debug(f"  Resolución temporal usada:            {hop_hr / fs:.4f} s por frame")
+    logger.debug(f"  Ventana STFT interna:                 {nperseg_hr / fs:.4f} s")
+    logger.debug(f"  Tiempo apagado global bajas:          {tiempo_apagado_global:.4f} s")
+    logger.debug(f"  Tiempo corte máximo:                  {tiempo_corte:.4f} s")
+    logger.debug(f"  Ventana analizada:                    {tiempo_inicio:.4f} s  -->  {tiempo_fin:.4f} s")
+    logger.debug(f"  Frames analizados:                    {np.sum(frames_analisis)}")
+    logger.debug(f"  Bandas bajas analizadas:              {num_bandas_bajas}/{num_bandas_totales}")
+    logger.debug(f"  Energía pre-corte:                    {energia_pre_corte:.4f}")
+    logger.debug(f"  Energía post-corte:                   {energia_post_corte:.4f}")
+    logger.debug(f"  Caída máxima en dB:                   {caida_maxima_db:.3f} dB")
+    logger.debug(f"  Caída máxima lineal:                  {caida_maxima_lineal:.4f}")
+    logger.debug(f"  Bandas activas antes del corte:       {activas_antes_corte:.4f}")
+    logger.debug(f"  Bandas activas después del corte:     {activas_despues_corte:.4f}")
+    logger.debug(f"  Colapso bandas activas:               {colapso_activos_frame:.4f}")
+    logger.debug(f"  Spread tiempos apagado bandas:        {spread_tiempos_caida:.4f} s")
+    logger.debug(f"  Tiempo colapso bandas activas 80-20:  {tiempo_colapso_bandas:.4f} s")
+    logger.debug(f"  Pendiente global bajas:               {pendiente_global_bajas:.3f} dB/s")
+    logger.debug(f"  Pendiente media por banda:            {pendiente_media:.3f} dB/s")
+    logger.debug(f"  Dispersión pendientes bandas:         {dispersion_pendientes:.3f}")
+    logger.debug(f"  Correlación banda-pendiente:          {correlacion_banda_pendiente:.3f}")
+    logger.debug(f"  Interpretación:                       {mensaje}")
+    logger.debug("="*95 + "\n")
 
     return {
         "pendientes_bandas": pendientes,
@@ -2562,7 +2539,7 @@ def reproducir_audio(ruta_wav):
         if sistema == "Windows": os.startfile(ruta_wav)
         elif sistema == "Darwin": subprocess.Popen(["open", ruta_wav])
         else: subprocess.Popen(["xdg-open", ruta_wav])
-    except Exception as e: print("No se pudo reproducir:", e)
+    except Exception as e: logger.debug("No se pudo reproducir:", e)
 
 def sincronizar_zoom(fig, grupos_ejes):
     bloqueado = {"estado": False}
@@ -2838,20 +2815,20 @@ def imprimir_comparacion_final_250ms_10ms(datos, usar="denoised"):
             ventana_s=0.010
         )
 
-    builtins.print("\n" + "="*90)
-    builtins.print("COMPARACIÓN FINAL 250 ms EN VENTANAS DE 10 ms")
-    builtins.print(f"Señal usada: {usar.upper()}")
-    builtins.print("="*90)
+    print("\n" + "="*90)
+    print("COMPARACIÓN FINAL 250 ms EN VENTANAS DE 10 ms")
+    print(f"Señal usada: {usar.upper()}")
+    print("="*90)
 
     if len(nombres) == 1:
         nombre = nombres[0]
         tabla = tablas[nombre]
 
-        builtins.print(f"\n--- {nombre} ---")
-        builtins.print("ventana_relativa_final_ms | energia_abs_media | RMS | muestras")
+        print(f"\n--- {nombre} ---")
+        print("ventana_relativa_final_ms | energia_abs_media | RMS | muestras")
 
         for fila in tabla:
-            builtins.print(
+            print(
                 f"{fila['inicio_rel_ms']:7.1f} a {fila['fin_rel_ms']:6.1f} ms | "
                 f"{fila['energia_abs_media']:.6f} | "
                 f"{fila['rms']:.6f} | "
@@ -2867,8 +2844,8 @@ def imprimir_comparacion_final_250ms_10ms(datos, usar="denoised"):
 
         n = min(len(tabla_1), len(tabla_2))
 
-        builtins.print(f"\nComparando: {nombre_1}  vs  {nombre_2}")
-        builtins.print(
+        print(f"\nComparando: {nombre_1}  vs  {nombre_2}")
+        print(
             "ventana_relativa_final_ms | "
             f"E_{nombre_1} | E_{nombre_2} | diferencia_1-2 | ratio_2/1"
         )
@@ -2886,7 +2863,7 @@ def imprimir_comparacion_final_250ms_10ms(datos, usar="denoised"):
             else:
                 ratio_2_1 = 0.0
 
-            builtins.print(
+            print(
                 f"{f1['inicio_rel_ms']:7.1f} a {f1['fin_rel_ms']:6.1f} ms | "
                 f"{e1:.6f} | "
                 f"{e2:.6f} | "
@@ -2894,7 +2871,7 @@ def imprimir_comparacion_final_250ms_10ms(datos, usar="denoised"):
                 f"{ratio_2_1:.3f}"
             )
 
-    builtins.print("="*90 + "\n")
+    print("="*90 + "\n")
 
 
 
@@ -3046,24 +3023,24 @@ def imprimir_ratios_post_pef_optimizados(etiqueta, ratios):
     Imprime SOLO los ratios post-PEF.
     """
 
-    builtins.print(f"\nRATIOS POST-PEF {etiqueta}:")
+    print(f"\nRATIOS POST-PEF {etiqueta}:")
 
     for clave, r in ratios.items():
-        builtins.print(f"\n  {r.get('nombre_ratio', clave)}")
+        print(f"\n  {r.get('nombre_ratio', clave)}")
 
         if not r.get("pef_detectado", False):
-            builtins.print("    No se ha detectado PEF válido.")
+            print("    No se ha detectado PEF válido.")
             continue
 
-        builtins.print(f"    PEF usado:              {r['t_pef_s']:.3f} s")
-        builtins.print(f"    Ventana 1:              {r['t_v1_ini_s']:.3f} - {r['t_v1_fin_s']:.3f} s")
-        builtins.print(f"    Ventana 2:              {r['t_v2_ini_s']:.3f} - {r['t_v2_fin_s']:.3f} s")
-        builtins.print(f"    Energía media abs V1:   {r['energia_v1']:.6f}")
-        builtins.print(f"    Energía media abs V2:   {r['energia_v2']:.6f}")
-        builtins.print(f"    Diferencia V1 - V2:     {r['diferencia_v1_menos_v2']:.6f}")
-        builtins.print(f"    Ratio V1 / V2:          {r['ratio_v2_v1']:.3f}")
-        builtins.print(f"    Caída relativa:         {r['caida_relativa']:.3f}")
-        builtins.print(f"    Delta dB V1/V2:         {r['delta_db']:.2f} dB")
+        print(f"    PEF usado:              {r['t_pef_s']:.3f} s")
+        print(f"    Ventana 1:              {r['t_v1_ini_s']:.3f} - {r['t_v1_fin_s']:.3f} s")
+        print(f"    Ventana 2:              {r['t_v2_ini_s']:.3f} - {r['t_v2_fin_s']:.3f} s")
+        print(f"    Energía media abs V1:   {r['energia_v1']:.6f}")
+        print(f"    Energía media abs V2:   {r['energia_v2']:.6f}")
+        print(f"    Diferencia V1 - V2:     {r['diferencia_v1_menos_v2']:.6f}")
+        print(f"    Ratio V1 / V2:          {r['ratio_v2_v1']:.3f}")
+        print(f"    Caída relativa:         {r['caida_relativa']:.3f}")
+        print(f"    Delta dB V1/V2:         {r['delta_db']:.2f} dB")
 
 
 # =====================================================
@@ -3304,34 +3281,34 @@ def imprimir_ratio_final_050s_logmel_negro(info):
     cuadro negro y los 500 ms anteriores a esa ventana.
     """
 
-    builtins.print("\nRATIO LOG-MEL DENOISED: REFERENCIA = PRIMER PUNTO DEL CUADRO NEGRO:")
+    print("\nRATIO LOG-MEL DENOISED: REFERENCIA = PRIMER PUNTO DEL CUADRO NEGRO:")
 
     if not info.get("detectado", False):
-        builtins.print(f"  No detectado: {info.get('motivo', 'desconocido')}")
+        print(f"  No detectado: {info.get('motivo', 'desconocido')}")
         return
 
-    builtins.print(f"  PEF usado:                              {info['t_pef_s']:.3f} s")
-    builtins.print(f"  Referencia usada:                       {info.get('referencia_usada', '')}")
-    builtins.print(f"  Primer punto cuadro negro:              {info['t_negro_ref_s']:.3f} s")
-    builtins.print(f"  Centro del frame negro:                 {info['t_negro_centro_s']:.3f} s")
-    builtins.print(f"  Umbral negro real usado:                {info['umbral_negro_db']:.1f} dB")
+    print(f"  PEF usado:                              {info['t_pef_s']:.3f} s")
+    print(f"  Referencia usada:                       {info.get('referencia_usada', '')}")
+    print(f"  Primer punto cuadro negro:              {info['t_negro_ref_s']:.3f} s")
+    print(f"  Centro del frame negro:                 {info['t_negro_centro_s']:.3f} s")
+    print(f"  Umbral negro real usado:                {info['umbral_negro_db']:.1f} dB")
 
-    builtins.print(
+    print(
         f"  V1 anterior 500 ms:                     "
         f"{info['t_v1_ini_s']:.3f} - {info['t_v1_fin_s']:.3f} s"
     )
-    builtins.print(
+    print(
         f"  V2 final 500 ms antes del cuadro negro: "
         f"{info['t_v2_ini_s']:.3f} - {info['t_v2_fin_s']:.3f} s"
     )
 
-    builtins.print(f"  Energía V1 anterior:                    {info['energia_v1']:.8f}")
-    builtins.print(f"  Energía V2 final:                       {info['energia_v2']:.8f}")
-    builtins.print(f"  Diferencia V1 - V2:                     {info['diferencia_v1_menos_v2']:.8f}")
-    builtins.print(f"  Ratio V1 / V2:                          {info['ratio_v1_v2']:.3f}")
-    builtins.print(f"  Aumento relativo V1 sobre V2:           {info['aumento_relativo_v1_sobre_v2']:.3f}")
-    builtins.print(f"  Caída relativa respecto a V1:           {info['caida_relativa']:.3f}")
-    builtins.print(f"  Delta dB V1/V2:                         {info['delta_db_v1_v2']:.2f} dB")
+    print(f"  Energía V1 anterior:                    {info['energia_v1']:.8f}")
+    print(f"  Energía V2 final:                       {info['energia_v2']:.8f}")
+    print(f"  Diferencia V1 - V2:                     {info['diferencia_v1_menos_v2']:.8f}")
+    print(f"  Ratio V1 / V2:                          {info['ratio_v1_v2']:.3f}")
+    print(f"  Aumento relativo V1 sobre V2:           {info['aumento_relativo_v1_sobre_v2']:.3f}")
+    print(f"  Caída relativa respecto a V1:           {info['caida_relativa']:.3f}")
+    print(f"  Delta dB V1/V2:                         {info['delta_db_v1_v2']:.2f} dB")
 
 
 # =====================================================
@@ -3841,34 +3818,34 @@ def imprimir_variacion_bandas_070s_final_logmel_denoised(info):
     del Log-Mel denoised.
     """
 
-    builtins.print("\nVARIACIÓN DE BANDAS 0.7 s ANTES DEL FINAL LOG-MEL DENOISED:")
+    print("\nVARIACIÓN DE BANDAS 0.7 s ANTES DEL FINAL LOG-MEL DENOISED:")
 
     if not info.get("detectado", False):
-        builtins.print(f"  No detectado: {info.get('motivo', 'desconocido')}")
+        print(f"  No detectado: {info.get('motivo', 'desconocido')}")
         return
 
-    builtins.print(f"  PEF usado:                              {info['t_pef_s']:.3f} s")
-    builtins.print(f"  Final Log-Mel denoised:                 {info['t_final_s']:.3f} s")
-    builtins.print(f"  Referencia final:                       {info['referencia_final']}")
-    builtins.print(f"  Tipo final:                             {info['tipo_final']}")
-    builtins.print(f"  Ventana analizada:                      {info['t_inicio_ventana_s']:.3f} - {info['t_final_s']:.3f} s")
-    builtins.print(f"  Umbral banda activa:                    {info['umbral_banda_activa_db']:.1f} dB")
+    print(f"  PEF usado:                              {info['t_pef_s']:.3f} s")
+    print(f"  Final Log-Mel denoised:                 {info['t_final_s']:.3f} s")
+    print(f"  Referencia final:                       {info['referencia_final']}")
+    print(f"  Tipo final:                             {info['tipo_final']}")
+    print(f"  Ventana analizada:                      {info['t_inicio_ventana_s']:.3f} - {info['t_final_s']:.3f} s")
+    print(f"  Umbral banda activa:                    {info['umbral_banda_activa_db']:.1f} dB")
 
-    builtins.print(f"  Bandas activas inicio ventana:          {info['bandas_activas_inicio']}")
-    builtins.print(f"  Bandas activas final ventana:           {info['bandas_activas_final']}")
-    builtins.print(f"  Diferencia bandas activas:              {info['diferencia_bandas_activas']}")
-    builtins.print(f"  Ratio bandas activas final/inicio:      {info['ratio_bandas_activas_final_inicio']:.3f}")
+    print(f"  Bandas activas inicio ventana:          {info['bandas_activas_inicio']}")
+    print(f"  Bandas activas final ventana:           {info['bandas_activas_final']}")
+    print(f"  Diferencia bandas activas:              {info['diferencia_bandas_activas']}")
+    print(f"  Ratio bandas activas final/inicio:      {info['ratio_bandas_activas_final_inicio']:.3f}")
 
-    builtins.print(f"  Bandas ALTAS activas inicio:            {info['bandas_altas_activas_inicio']}")
-    builtins.print(f"  Bandas ALTAS activas final:             {info['bandas_altas_activas_final']}")
-    builtins.print(f"  Ratio ALTAS activas final/inicio:       {info['ratio_altas_activas_final_inicio']:.3f}")
+    print(f"  Bandas ALTAS activas inicio:            {info['bandas_altas_activas_inicio']}")
+    print(f"  Bandas ALTAS activas final:             {info['bandas_altas_activas_final']}")
+    print(f"  Ratio ALTAS activas final/inicio:       {info['ratio_altas_activas_final_inicio']:.3f}")
 
-    builtins.print(f"  Variación media todas bandas:           {info['variacion_media_db']:.3f} dB")
-    builtins.print(f"  Variación bandas bajas:                 {info['variacion_bajas_db']:.3f} dB")
-    builtins.print(f"  Variación bandas medias:                {info['variacion_medias_db']:.3f} dB")
-    builtins.print(f"  Variación bandas altas:                 {info['variacion_altas_db']:.3f} dB")
-    builtins.print(f"  Variación ponderada peso altas:         {info['variacion_ponderada_altas_db']:.3f} dB")
-    builtins.print(f"  Índice corte frecuencias altas:         {info['indice_corte_frecuencias_altas']:.3f}")
+    print(f"  Variación media todas bandas:           {info['variacion_media_db']:.3f} dB")
+    print(f"  Variación bandas bajas:                 {info['variacion_bajas_db']:.3f} dB")
+    print(f"  Variación bandas medias:                {info['variacion_medias_db']:.3f} dB")
+    print(f"  Variación bandas altas:                 {info['variacion_altas_db']:.3f} dB")
+    print(f"  Variación ponderada peso altas:         {info['variacion_ponderada_altas_db']:.3f} dB")
+    print(f"  Índice corte frecuencias altas:         {info['indice_corte_frecuencias_altas']:.3f}")
 
 
 # =====================================================
@@ -4097,39 +4074,39 @@ def imprimir_ratios_ventanas_100ms_a_1s_logmel_denoised(info):
     Imprime ratios comparativos de ventanas de 100 ms a 1 s.
     """
 
-    builtins.print("\nRATIOS COMPARATIVOS LOG-MEL DENOISED: VENTANAS 100 ms -> 1 s:")
+    print("\nRATIOS COMPARATIVOS LOG-MEL DENOISED: VENTANAS 100 ms -> 1 s:")
 
     if not info.get("detectado", False):
-        builtins.print(f"  No detectado: {info.get('motivo', 'desconocido')}")
+        print(f"  No detectado: {info.get('motivo', 'desconocido')}")
         return
 
-    builtins.print(f"  Final Log-Mel denoised:             {info['t_final_s']:.3f} s")
-    builtins.print(f"  Referencia final:                   {info['referencia_final']}")
-    builtins.print(f"  Tipo final:                         {info['tipo_final']}")
-    builtins.print("  V1 = ventana anterior | V2 = ventana final antes del final Log-Mel")
+    print(f"  Final Log-Mel denoised:             {info['t_final_s']:.3f} s")
+    print(f"  Referencia final:                   {info['referencia_final']}")
+    print(f"  Tipo final:                         {info['tipo_final']}")
+    print("  V1 = ventana anterior | V2 = ventana final antes del final Log-Mel")
 
     for r in info.get("ratios", []):
         dur_ms = r.get("duracion_ms", 0)
 
         if not r.get("valido", False):
-            builtins.print(f"\n  W = {dur_ms:4d} ms -> NO válido ({r.get('motivo', '')})")
+            print(f"\n  W = {dur_ms:4d} ms -> NO válido ({r.get('motivo', '')})")
             continue
 
-        builtins.print(f"\n  W = {dur_ms:4d} ms")
-        builtins.print(f"    V1: {r['t_v1_ini_s']:.3f}-{r['t_v1_fin_s']:.3f} s | V2: {r['t_v2_ini_s']:.3f}-{r['t_v2_fin_s']:.3f} s")
-        builtins.print(f"    Ratio V1/V2 global:      {r['ratio_v1_v2']:.3f}")
-        builtins.print(f"    Ratio V2/V1 global:      {r['ratio_v2_v1']:.3f}")
-        builtins.print(f"    Caída relativa global:   {r['caida_relativa']:.3f}")
-        builtins.print(f"    Delta dB V1/V2 global:   {r['delta_db_v1_v2']:.2f} dB")
-        builtins.print(f"    Ratio V1/V2 ALTAS:       {r['ratio_altas_v1_v2']:.3f}")
-        builtins.print(f"    Ratio V2/V1 ALTAS:       {r['ratio_altas_v2_v1']:.3f}")
-        builtins.print(f"    Caída relativa ALTAS:    {r['caida_relativa_altas']:.3f}")
-        builtins.print(f"    Bandas activas V1->V2:   {r['bandas_activas_v1']} -> {r['bandas_activas_v2']} | ALTAS {r['bandas_altas_activas_v1']} -> {r['bandas_altas_activas_v2']}")
+        print(f"\n  W = {dur_ms:4d} ms")
+        print(f"    V1: {r['t_v1_ini_s']:.3f}-{r['t_v1_fin_s']:.3f} s | V2: {r['t_v2_ini_s']:.3f}-{r['t_v2_fin_s']:.3f} s")
+        print(f"    Ratio V1/V2 global:      {r['ratio_v1_v2']:.3f}")
+        print(f"    Ratio V2/V1 global:      {r['ratio_v2_v1']:.3f}")
+        print(f"    Caída relativa global:   {r['caida_relativa']:.3f}")
+        print(f"    Delta dB V1/V2 global:   {r['delta_db_v1_v2']:.2f} dB")
+        print(f"    Ratio V1/V2 ALTAS:       {r['ratio_altas_v1_v2']:.3f}")
+        print(f"    Ratio V2/V1 ALTAS:       {r['ratio_altas_v2_v1']:.3f}")
+        print(f"    Caída relativa ALTAS:    {r['caida_relativa_altas']:.3f}")
+        print(f"    Bandas activas V1->V2:   {r['bandas_activas_v1']} -> {r['bandas_activas_v2']} | ALTAS {r['bandas_altas_activas_v1']} -> {r['bandas_altas_activas_v2']}")
 
     mejor_altas = info.get("mejor_altas")
     if mejor_altas is not None:
-        builtins.print("\n  Ventana más crítica en frecuencias ALTAS:")
-        builtins.print(f"    W = {mejor_altas['duracion_ms']} ms | Ratio V2/V1 ALTAS = {mejor_altas['ratio_altas_v2_v1']:.3f}")
+        print("\n  Ventana más crítica en frecuencias ALTAS:")
+        print(f"    W = {mejor_altas['duracion_ms']} ms | Ratio V2/V1 ALTAS = {mejor_altas['ratio_altas_v2_v1']:.3f}")
 
 
 # =====================================================
@@ -4891,73 +4868,73 @@ def imprimir_SOLO_ratio_100ms_ruido_basal_logmel_denoised(info):
     Única salida por pantalla: ratio sincero de 100 ms antes del ruido basal.
     """
 
-    builtins.print("\n" + "="*90)
-    builtins.print("RATIO SINCERO LOG-MEL DENOISED: 100 ms ANTES DEL BASAL FINAL RECORRIDO DESDE ATRÁS")
-    builtins.print("="*90)
+    print("\n" + "="*90)
+    print("RATIO SINCERO LOG-MEL DENOISED: 100 ms ANTES DEL BASAL FINAL RECORRIDO DESDE ATRÁS")
+    print("="*90)
 
     if not info.get("detectado", False):
-        builtins.print(f"No detectado: {info.get('motivo', 'desconocido')}")
-        builtins.print("="*90 + "\n")
+        print(f"No detectado: {info.get('motivo', 'desconocido')}")
+        print("="*90 + "\n")
         return
 
-    builtins.print(f"PEF usado:                         {info['t_pef_s']:.3f} s")
-    builtins.print(f"Momento ruido basal:               {info['t_basal_s']:.3f} s")
-    builtins.print(f"Referencia basal:                  {info['referencia_basal']}")
-    builtins.print(f"Criterio basal:                    {info['criterio_basal']}")
-    builtins.print(f"Umbral energía recorrido atrás:    {info.get('umbral_energia_recorrido_atras', 0.0):.6f}")
+    print(f"PEF usado:                         {info['t_pef_s']:.3f} s")
+    print(f"Momento ruido basal:               {info['t_basal_s']:.3f} s")
+    print(f"Referencia basal:                  {info['referencia_basal']}")
+    print(f"Criterio basal:                    {info['criterio_basal']}")
+    print(f"Umbral energía recorrido atrás:    {info.get('umbral_energia_recorrido_atras', 0.0):.6f}")
 
-    builtins.print(
+    print(
         f"V1 anterior 100 ms:                "
         f"{info['t_v1_ini_s']:.3f} - {info['t_v1_fin_s']:.3f} s"
     )
-    builtins.print(
+    print(
         f"V2 final 100 ms antes basal:       "
         f"{info['t_v2_ini_s']:.3f} - {info['t_v2_fin_s']:.3f} s"
     )
 
-    builtins.print("\nRATIO PRINCIPAL POR EXTREMOS FRECUENCIALES")
+    print("\nRATIO PRINCIPAL POR EXTREMOS FRECUENCIALES")
     e1 = info.get("extremos_frecuenciales_v1", {})
     e2 = info.get("extremos_frecuenciales_v2", {})
 
-    builtins.print("V1 = 100 ms anteriores | V2 = 100 ms justo antes del basal")
-    builtins.print("\nV1 anterior:")
-    builtins.print(f"  Frecuencia mínima activa V1:       {e1.get('f_min_hz', 0.0):.2f} Hz")
-    builtins.print(f"  Frecuencia máxima activa V1:       {e1.get('f_max_hz', 0.0):.2f} Hz")
-    builtins.print(f"  Rango frecuencial V1:              {e1.get('rango_hz', 0.0):.2f} Hz")
-    builtins.print(f"  Bandas activas robustas V1:        {e1.get('n_bandas_activas', 0)}")
+    print("V1 = 100 ms anteriores | V2 = 100 ms justo antes del basal")
+    print("\nV1 anterior:")
+    print(f"  Frecuencia mínima activa V1:       {e1.get('f_min_hz', 0.0):.2f} Hz")
+    print(f"  Frecuencia máxima activa V1:       {e1.get('f_max_hz', 0.0):.2f} Hz")
+    print(f"  Rango frecuencial V1:              {e1.get('rango_hz', 0.0):.2f} Hz")
+    print(f"  Bandas activas robustas V1:        {e1.get('n_bandas_activas', 0)}")
 
-    builtins.print("\nV2 final:")
-    builtins.print(f"  Frecuencia mínima activa V2:       {e2.get('f_min_hz', 0.0):.2f} Hz")
-    builtins.print(f"  Frecuencia máxima activa V2:       {e2.get('f_max_hz', 0.0):.2f} Hz")
-    builtins.print(f"  Rango frecuencial V2:              {e2.get('rango_hz', 0.0):.2f} Hz")
-    builtins.print(f"  Bandas activas robustas V2:        {e2.get('n_bandas_activas', 0)}")
+    print("\nV2 final:")
+    print(f"  Frecuencia mínima activa V2:       {e2.get('f_min_hz', 0.0):.2f} Hz")
+    print(f"  Frecuencia máxima activa V2:       {e2.get('f_max_hz', 0.0):.2f} Hz")
+    print(f"  Rango frecuencial V2:              {e2.get('rango_hz', 0.0):.2f} Hz")
+    print(f"  Bandas activas robustas V2:        {e2.get('n_bandas_activas', 0)}")
 
-    builtins.print("\nRatios de extremos:")
-    builtins.print(f"  Ratio principal fmax(V2)/fmin(V1): {info['ratio_extremo_precoz_fmax_v2_fmin_v1']:.6f}")
-    builtins.print(f"  Ratio fmax(V2)/fmax(V1):           {info['ratio_fmax_v2_fmax_v1']:.6f}")
-    builtins.print(f"  Ratio fmin(V2)/fmin(V1):           {info['ratio_fmin_v2_fmin_v1']:.6f}")
-    builtins.print(f"  Ratio rango(V2)/rango(V1):         {info['ratio_rango_v2_v1']:.6f}")
-    builtins.print(f"  Score extremos frecuenciales:      {info['score_extremos_frecuenciales']:.6f}")
-    builtins.print(f"  Score dirección fmax V2-V1:        {info['score_direccion_fmax']:.6f}")
+    print("\nRatios de extremos:")
+    print(f"  Ratio principal fmax(V2)/fmin(V1): {info['ratio_extremo_precoz_fmax_v2_fmin_v1']:.6f}")
+    print(f"  Ratio fmax(V2)/fmax(V1):           {info['ratio_fmax_v2_fmax_v1']:.6f}")
+    print(f"  Ratio fmin(V2)/fmin(V1):           {info['ratio_fmin_v2_fmin_v1']:.6f}")
+    print(f"  Ratio rango(V2)/rango(V1):         {info['ratio_rango_v2_v1']:.6f}")
+    print(f"  Score extremos frecuenciales:      {info['score_extremos_frecuenciales']:.6f}")
+    print(f"  Score dirección fmax V2-V1:        {info['score_direccion_fmax']:.6f}")
 
-    builtins.print("\nCONTROL SECUNDARIO")
-    builtins.print(f"  Ratio MEJORADO energía V2/V1:      {info['ratio_mejorado_v2_v1']:.6f}")
-    builtins.print(f"  Score transición frecuencial:      {info['score_transicion_frecuencial']:.6f}")
+    print("\nCONTROL SECUNDARIO")
+    print(f"  Ratio MEJORADO energía V2/V1:      {info['ratio_mejorado_v2_v1']:.6f}")
+    print(f"  Score transición frecuencial:      {info['score_transicion_frecuencial']:.6f}")
 
-    builtins.print("\nCONTROL SIMPLE EN ESCALA VISUAL LOG-MEL [-80, 0] -> [0, 1]")
-    builtins.print(f"Media visual V1:                   {info['media_visual_v1']:.6f}")
-    builtins.print(f"Media visual V2:                   {info['media_visual_v2']:.6f}")
-    builtins.print(f"Ratio simple V2/V1:                {info['ratio_v2_v1']:.6f}")
-    builtins.print(f"Ratio simple V1/V2:                {info['ratio_v1_v2']:.6f}")
-    builtins.print(f"Diferencia simple V1 - V2:         {info['diferencia_v1_menos_v2']:.6f}")
-    builtins.print(f"Variación simple relativa:         {info['variacion_relativa']:.6f}")
+    print("\nCONTROL SIMPLE EN ESCALA VISUAL LOG-MEL [-80, 0] -> [0, 1]")
+    print(f"Media visual V1:                   {info['media_visual_v1']:.6f}")
+    print(f"Media visual V2:                   {info['media_visual_v2']:.6f}")
+    print(f"Ratio simple V2/V1:                {info['ratio_v2_v1']:.6f}")
+    print(f"Ratio simple V1/V2:                {info['ratio_v1_v2']:.6f}")
+    print(f"Diferencia simple V1 - V2:         {info['diferencia_v1_menos_v2']:.6f}")
+    print(f"Variación simple relativa:         {info['variacion_relativa']:.6f}")
 
-    builtins.print("\nCONTROL EN dB DIRECTO")
-    builtins.print(f"Media dB V1:                       {info['media_db_v1']:.3f} dB")
-    builtins.print(f"Media dB V2:                       {info['media_db_v2']:.3f} dB")
-    builtins.print(f"Media dB altas V1:                 {info['media_db_altas_v1']:.3f} dB")
-    builtins.print(f"Media dB altas V2:                 {info['media_db_altas_v2']:.3f} dB")
-    builtins.print("="*90 + "\n")
+    print("\nCONTROL EN dB DIRECTO")
+    print(f"Media dB V1:                       {info['media_db_v1']:.3f} dB")
+    print(f"Media dB V2:                       {info['media_db_v2']:.3f} dB")
+    print(f"Media dB altas V1:                 {info['media_db_altas_v1']:.3f} dB")
+    print(f"Media dB altas V2:                 {info['media_db_altas_v2']:.3f} dB")
+    print("="*90 + "\n")
 
 
 # =====================================================
@@ -5615,10 +5592,10 @@ def imprimir_SOLO_ratio_baremo_freq_db(info):
     etiqueta = info.get("etiqueta_logmel", "")
 
     if not info.get("detectado", False):
-        builtins.print(f"{etiqueta}: No detectado ({info.get('motivo', 'desconocido')})")
+        print(f"{etiqueta}: No detectado ({info.get('motivo', 'desconocido')})")
         return
 
-    builtins.print(
+    print(
         f"{etiqueta}: Ratio baremo freq*dBrel 200 ms MÁS PESO = "
         f"{info['ratio_baremo_freq_db_200_mas_peso']:.6f}"
     )
@@ -6127,15 +6104,15 @@ def imprimir_conclusion_final_prueba(nombre, conclusion):
     Imprime solo la conclusión final, con el motivo prioritario.
     """
 
-    builtins.print("\nCONCLUSIÓN FINAL")
-    builtins.print("-" * 70)
-    builtins.print(f"{nombre}: {conclusion['motivo']}")
-    builtins.print(f"Detalle: {conclusion['detalle']}")
-    builtins.print("-" * 70)
+    print("\nCONCLUSIÓN FINAL")
+    print("-" * 70)
+    print(f"{nombre}: {conclusion['motivo']}")
+    print(f"Detalle: {conclusion['detalle']}")
+    print("-" * 70)
 
 def preparar_graficas_fuente(d):
     fs_raw, fs_den, y_raw, y_den = d["fs_raw"], d["fs"], d["original_raw_graficas"], d["denoised"]
-    
+
     t_raw = np.arange(len(y_raw)) / fs_raw
     t_den = np.arange(len(y_den)) / fs_den
 
@@ -6277,7 +6254,7 @@ def preparar_graficas_fuente(d):
     umbral_energia_nula=0.08,
     min_frames_nulos=2
     )
-    
+
     # Pasamos la máscara de tos para ignorarla en el cálculo del score si está disponible
     # y usamos la señal remuestreada (denoising_entrada) para que su longitud coincida
     # con la longitud de la máscara. Esto evita que la máscara no se aplique por
@@ -6460,7 +6437,7 @@ def preparar_graficas_fuente(d):
 
 def anadir_botones_audio(ax, d, nombre):
     botones = []
-    
+
     ax_b_ori = ax.inset_axes([0.015, 0.055, 0.17, 0.23])
     b_ori = Button(ax_b_ori, "Play orig")
     ruta_ori = guardar_temp_wav(d["original_raw_escucha"], d["fs_raw"], f"{nombre}_orig")
@@ -6950,88 +6927,6 @@ def dibujar_ventana_unica(datos):
     return fig
 
 
-# =====================================================
-# MAIN
-# =====================================================
-
-def main():
-    root = Tk()
-    root.withdraw()
-
-    # Puedes cargar uno o dos audios.
-    # Si cancelas uno de los dos, se muestra solo el que hayas seleccionado.
-    ruta_1 = seleccionar_audio_opcional("AUDIO 1 / ESTETOSCOPIO 1")
-    ruta_2 = seleccionar_audio_opcional("AUDIO 2 / ESTETOSCOPIO 2 (opcional)")
-
-    archivos = {}
-
-    if ruta_1 is not None:
-        archivos["ESTETOSCOPIO 1"] = ruta_1
-
-    if ruta_2 is not None:
-        archivos["ESTETOSCOPIO 2"] = ruta_2
-
-    if len(archivos) == 0:
-        root.destroy()
-        raise ValueError("No se ha seleccionado ningún audio.")
-
-    output_folder = filedialog.askdirectory(title="Carpeta de guardado")
-    if not output_folder:
-        root.destroy()
-        raise ValueError("Carpeta no seleccionada.")
-
-    root.destroy()
-    os.makedirs(output_folder, exist_ok=True)
-
-    datos = {}
-
-    for nombre, ruta in archivos.items():
-        datos[nombre] = cargar_y_procesar(ruta, nombre, output_folder)
-        datos[nombre]["graficas"] = preparar_graficas_fuente(datos[nombre])
-
-    # =====================================================
-    # ÚNICA SALIDA POR PANTALLA
-    # =====================================================
-    # Solo se muestra el ratio sincero de 100 ms justo antes del ruido basal
-    # y los 100 ms anteriores a esa ventana.
-    for nombre in datos:
-        g = datos[nombre]["graficas"]
-
-        builtins.print(f"\n--- {nombre} ---")
-
-        imprimir_SOLO_ratio_baremo_freq_db(
-            g.get("ratio_variacion_frecuencial_200ms_logmel_den", {})
-        )
-
-        imprimir_SOLO_ratio_baremo_freq_db(
-            g.get("ratio_variacion_frecuencial_200ms_logmel_raw", {})
-        )
-
-        conclusion = calcular_conclusion_final_prueba(
-            datos[nombre],
-            g,
-            umbral_pef_retrasado_s=0.150,
-            umbral_terminacion_precoz=0.60
-        )
-
-        imprimir_conclusion_final_prueba(nombre, conclusion)
-
-    dibujar_ventana_unica(datos)
-    plt.show()
-
-# =====================================================
-# PROGRAMA AUXILIAR INDEPENDIENTE
-# =====================================================
-# Este bloque permite analizar un unico WAV eligiendo la fuente de grabacion.
-# No importa ningun script local: todas las funciones necesarias estan en este
-# mismo archivo. Las unicas dependencias externas son las librerias usadas por
-# el programa final: numpy, scipy, matplotlib y tkinter.
-
-import re
-from pathlib import Path
-from tkinter import messagebox, simpledialog, ttk
-
-
 FUENTES_AUXILIARES = (
     ("Estetoscopio", "ESTETOSCOPIO"),
     ("Microfono del PC", "PC"),
@@ -7236,7 +7131,7 @@ def calcular_espectrograma_original_auxiliar(datos):
 
 
 def analizar_audio_auxiliar(ruta_audio, fuente, carpeta_salida):
-    """Analiza un unico WAV con el procesamiento original del programa final."""
+    """Devuelve los datos de análisis y la conclusión para un WAV."""
     if fuente not in {clave for _, clave in FUENTES_AUXILIARES}:
         raise ValueError("Fuente no reconocida: " + str(fuente))
     ruta_audio = Path(ruta_audio)
@@ -7313,7 +7208,7 @@ def mostrar_resultados_auxiliar(datos, conclusion):
     """Imprime la conclusion y muestra la figura original con Log-Mel denoised."""
     fuente = datos["nombre_dispositivo"]
     graficas = datos["graficas"]
-    builtins.print("\n--- " + fuente + " ---")
+    print("\n--- " + fuente + " ---")
     for clave in (
         "ratio_variacion_frecuencial_200ms_logmel_den",
         "ratio_variacion_frecuencial_200ms_logmel_raw",
@@ -7335,7 +7230,7 @@ def mostrar_resultados_auxiliar(datos, conclusion):
 
 
 def main():
-    """Selecciona fuente, WAV y carpeta de salida para analizar una sola senal."""
+    """Abre el selector de fuente, archivo WAV y carpeta de salida."""
     root = Tk()
     root.withdraw()
     try:
